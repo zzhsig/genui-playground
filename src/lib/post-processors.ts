@@ -1,7 +1,12 @@
 import type { UISlide, UIBlock } from "./types";
 
 export function postProcessSlide(slide: UISlide): UISlide {
-  return { ...slide, blocks: slide.blocks.map(postProcessBlock) };
+  return {
+    ...slide,
+    background: "#ffffff",
+    dark: false,
+    blocks: slide.blocks.map(postProcessBlock),
+  };
 }
 
 function postProcessBlock(block: UIBlock): UIBlock {

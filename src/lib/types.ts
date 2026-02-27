@@ -38,13 +38,29 @@ export type BlockType =
   | "button" | "quiz" | "counter"
   | "code" | "map" | "html";
 
+// ── Graph Node (returned by GET /api/slides/:id) ──
+
+export interface SlideNode {
+  id: string;
+  slide: UISlide;
+  parentId: string | null;
+  mainChildId: string | null;
+  conversationHistory: ConversationMessage[];
+  children: { id: string; title: string | null; isMain: boolean }[];
+  links: { id: string; slideId: string; title: string | null }[];
+  backlinks: { id: string; slideId: string; title: string | null }[];
+  chats: { id: string; selectedText: string; blockId: string | null; messageCount: number }[];
+  createdAt: number;
+}
+
 // ── SSE Events ──
 
 export type SSEEvent =
   | { type: "status"; message: string; step?: string }
   | { type: "slide"; slide: UISlide }
   | { type: "thinking"; text: string }
-  | { type: "done"; conversationHistory: ConversationMessage[] }
+  | { type: "done"; slideId?: string; chatId?: string; conversationHistory?: ConversationMessage[] }
+  | { type: "chat_response"; chatId: string; content: string }
   | { type: "error"; message: string };
 
 // ── Request / Response ──
