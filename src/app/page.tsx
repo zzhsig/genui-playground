@@ -62,8 +62,17 @@ async function fetchSSE(
   }
 }
 
-// Consume an SSE response silently, return the slideId from the done event
+// Consume a response silently (handles both JSON and SSE), return the slideId
 async function consumeSSE(res: Response): Promise<string | null> {
+  const ct = res.headers.get("content-type") || "";
+
+  // JSON response — branch/continue already exists
+  if (ct.includes("application/json")) {
+    const data = await res.json();
+    return (data.slideId as string) || null;
+  }
+
+  // SSE stream — new generation
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buf = "";
@@ -110,6 +119,8 @@ export default function Home() {
   const [lastSlideId, setLastSlideId] = useState<string | null>(null);
 
   const pregenRef = useRef<{ id: string; promise: Promise<string | null> } | null>(null);
+  const branchPregenRef = useRef<Map<string, Promise<string | null>>>(new Map());
+  const pregenAbortRef = useRef<AbortController | null>(null);
   const started = currentNode !== null || generating;
 
   // Fetch recent slides and last visited on mount
@@ -140,40 +151,82 @@ export default function Home() {
     }
   }, []);
 
-  // Pre-generate main child when a slide loads
+  // Pre-generate main child + branch actions when a slide loads
   useEffect(() => {
-    if (!currentNode || currentNode.mainChildId || generating) return;
+    if (!currentNode || generating) return;
     const slideId = currentNode.id;
 
-    const promise = (async (): Promise<string | null> => {
-      try {
-        const res = await fetch(`/api/slides/${slideId}/continue`, { method: "POST" });
-        const ct = res.headers.get("content-type") || "";
+    // Cancel previous pre-gen cycle
+    pregenAbortRef.current?.abort();
+    const abort = new AbortController();
+    pregenAbortRef.current = abort;
+    branchPregenRef.current = new Map();
 
-        if (ct.includes("application/json")) {
-          const data = await res.json();
-          return data.slideId as string;
+    // 1. Pre-gen main child (right arrow)
+    if (!currentNode.mainChildId) {
+      const promise = (async (): Promise<string | null> => {
+        try {
+          const res = await fetch(`/api/slides/${slideId}/continue`, {
+            method: "POST",
+            signal: abort.signal,
+          });
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("application/json")) {
+            const data = await res.json();
+            return data.slideId as string;
+          }
+          return await consumeSSE(res);
+        } catch {
+          return null;
         }
+      })();
 
-        return await consumeSSE(res);
-      } catch {
-        return null;
-      }
-    })();
+      pregenRef.current = { id: slideId, promise };
 
-    pregenRef.current = { id: slideId, promise };
+      promise.then((childId) => {
+        if (childId && !abort.signal.aborted && pregenRef.current?.id === slideId) {
+          loadSlide(slideId, false);
+        }
+      });
+    }
 
-    promise.then((childId) => {
-      if (childId && pregenRef.current?.id === slideId) {
-        // Silently refresh node to pick up mainChildId
-        loadSlide(slideId, false);
-      }
+    // 2. Pre-gen branch actions
+    const actions = (currentNode.slide.actions || []).filter((a) => {
+      const label = a.label.toLowerCase();
+      return !label.startsWith("continue") && !label.startsWith("next");
     });
 
+    for (const action of actions) {
+      const promise = (async (): Promise<string | null> => {
+        try {
+          const res = await fetch(`/api/slides/${slideId}/branch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: action.prompt }),
+            signal: abort.signal,
+          });
+          return await consumeSSE(res);
+        } catch {
+          return null;
+        }
+      })();
+
+      branchPregenRef.current.set(action.prompt, promise);
+
+      promise.then((childId) => {
+        if (childId && !abort.signal.aborted) {
+          // Silently refresh to show branch chips
+          loadSlide(slideId, false);
+        }
+      });
+    }
+
     return () => {
+      abort.abort();
       pregenRef.current = null;
+      branchPregenRef.current = new Map();
     };
-  }, [currentNode?.id, currentNode?.mainChildId, generating, loadSlide]);
+  }, [currentNode?.id, generating, loadSlide]);
 
   // Generate a root slide (initial prompt)
   const generateRoot = useCallback(
@@ -294,11 +347,26 @@ export default function Home() {
     }
   }, [currentNode, loadSlide]);
 
-  // Center action — generate branch child
+  // Center action — use pre-gen if available, otherwise generate
   const handleBranch = useCallback(
     async (prompt: string) => {
       if (!currentNode) return;
 
+      // Check if pre-gen has this prompt
+      const pregenPromise = branchPregenRef.current.get(prompt);
+      if (pregenPromise) {
+        setGenerating(true);
+        setSteps([{ message: "Preparing slide...", time: Date.now() }]);
+        const childId = await pregenPromise;
+        if (childId) {
+          await loadSlide(childId);
+          setGenerating(false);
+          return;
+        }
+        // Pre-gen failed, fall through to fresh generation
+      }
+
+      // Generate fresh (fallback)
       setGenerating(true);
       setSteps([]);
 

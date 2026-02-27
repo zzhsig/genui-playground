@@ -28,9 +28,20 @@ function createDb() {
       actions TEXT,
       parent_id TEXT REFERENCES slides(id),
       main_child_id TEXT,
+      source_prompt TEXT,
       conversation_history TEXT,
       created_at INTEGER
     );
+  `);
+
+  // Migration: add source_prompt column to existing DBs
+  try {
+    sqlite.exec(`ALTER TABLE slides ADD COLUMN source_prompt TEXT;`);
+  } catch {
+    // Column already exists
+  }
+
+  sqlite.exec(`
 
     CREATE TABLE IF NOT EXISTS slide_links (
       id TEXT PRIMARY KEY,

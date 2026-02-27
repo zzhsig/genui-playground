@@ -1,5 +1,5 @@
 import { db, schema } from "./index";
-import { eq, like, or, desc } from "drizzle-orm";
+import { eq, like, or, and, desc } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import type { UISlide, ConversationMessage, SlideAction } from "../types";
 
@@ -49,6 +49,7 @@ export function saveSlide(
   parentId: string | null,
   conversationHistory: ConversationMessage[],
   isMainChild: boolean,
+  sourcePrompt?: string,
 ): string {
   const id = uuid();
 
@@ -61,6 +62,7 @@ export function saveSlide(
     blocks: JSON.stringify(slide.blocks),
     actions: slide.actions ? JSON.stringify(slide.actions) : null,
     parentId,
+    sourcePrompt: sourcePrompt ?? null,
     conversationHistory: JSON.stringify(conversationHistory),
     createdAt: Date.now(),
   }).run();
@@ -152,6 +154,14 @@ export function searchSlides(query: string): { id: string; title: string | null 
   }).from(schema.slides).where(
     or(like(schema.slides.title, pattern), like(schema.slides.subtitle, pattern))
   ).limit(20).all();
+}
+
+export function findBranchByPrompt(parentId: string, prompt: string): string | null {
+  const row = db.select({ id: schema.slides.id })
+    .from(schema.slides)
+    .where(and(eq(schema.slides.parentId, parentId), eq(schema.slides.sourcePrompt, prompt)))
+    .get();
+  return row?.id ?? null;
 }
 
 export function getSlideHistory(id: string): ConversationMessage[] {

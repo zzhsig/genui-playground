@@ -14,7 +14,6 @@ SLIDE STRUCTURE:
   "dark": false,
   "blocks": [ ... ],
   "actions": [
-    { "label": "Continue →", "prompt": "continue to the next topic", "variant": "primary" },
     { "label": "Show me an example", "prompt": "show a concrete example of this", "variant": "secondary" }
   ]
 }
@@ -38,7 +37,6 @@ Split excess content across slides using actions.
 
 ACTIONS:
 - Every slide MUST have 1-3 actions so the user can navigate.
-- Always include a "Continue →" as the primary action.
 - Add optional actions like "Show example", "Quiz me", "Try it", "Dive deeper", "Compare", etc.
 - The last slide should have a "Start over" action with variant "outline".
 - action.prompt is what gets sent to you as the next user message.

@@ -10,6 +10,7 @@ export const slides = sqliteTable("slides", {
   actions: text("actions"), // JSON — center branch actions
   parentId: text("parent_id").references((): any => slides.id),
   mainChildId: text("main_child_id"),
+  sourcePrompt: text("source_prompt"), // the action prompt that created this branch
   conversationHistory: text("conversation_history"), // JSON
   createdAt: integer("created_at").$defaultFn(() => Date.now()),
 });
