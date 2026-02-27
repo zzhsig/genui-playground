@@ -76,7 +76,7 @@ INTERACTIVE (use often to engage the user):
 
 RICH:
 - code: { code, language?, title? }
-- html: { content: "<full HTML/CSS/JS>", height? } — for games, simulations, flashcards, interactive widgets. Use this for "Try it" actions. The HTML runs in a sandboxed iframe with Tailwind CSS available.
+- html: { content: "<body content + scripts>", height? } — for games, simulations, flashcards, interactive widgets. Use this for "Try it" actions. The sandbox has React 18, ReactDOM, Babel, and Tailwind CSS available. Write React components using JSX in \`<script type="text/babel">\` blocks and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. A \`<div id="root">\` is provided automatically. You can also use plain HTML/CSS/JS. Do NOT include \`<html>\` or \`<head>\` tags — just provide body content and scripts.
 
 Every block needs a unique "id".`,
     input_schema: {

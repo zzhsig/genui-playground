@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { UISlide, UIBlock, SlideAction, SlideNode } from "@/lib/types";
 import { AnimatedBlock } from "./animated-block";
@@ -19,13 +19,15 @@ interface ChatMessage {
 interface SlideRendererProps {
   node: SlideNode;
   loading: boolean;
+  autoPlayAudio: boolean;
+  onAutoPlayChange: (value: boolean) => void;
   onNavigate: (slideId: string) => void;
   onContinue: () => void;
   onBranch: (prompt: string) => void;
   onRefresh: () => void;
 }
 
-export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch, onRefresh }: SlideRendererProps) {
+export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, onNavigate, onContinue, onBranch, onRefresh }: SlideRendererProps) {
   const { slide, parentId, mainChildId, links, backlinks } = node;
   const dark = slide.dark ?? false;
   const bg = slide.background || "#ffffff";
@@ -156,6 +158,11 @@ export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch,
       className="absolute inset-0 flex flex-col overflow-hidden"
       style={{ background: bg, color: textColor }}
     >
+      {/* Audio controls - top left */}
+      <div className="absolute top-3 left-3 z-20">
+        <AudioControls slide={slide} autoPlay={autoPlayAudio} onAutoPlayChange={onAutoPlayChange} />
+      </div>
+
       {/* Content area */}
       <div
         ref={contentRef}
@@ -196,25 +203,31 @@ export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch,
 
         {/* Links & backlinks */}
         {(links.length > 0 || backlinks.length > 0) && (
-          <div className="flex flex-wrap items-center gap-2 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mt-3">
             {links.map((l) => (
               <button
                 key={l.id}
                 onClick={() => onNavigate(l.slideId)}
-                className="text-xs px-2 py-1 rounded-full transition-all hover:scale-105"
-                style={{ background: "rgba(99,102,241,0.1)", color: "#6366f1" }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.03] cursor-pointer"
+                style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.15)" }}
               >
-                → {l.title || "Untitled"}
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M7 17L17 7M7 7h10v10" />
+                </svg>
+                {l.title || "Untitled"}
               </button>
             ))}
             {backlinks.map((l) => (
               <button
                 key={l.id}
                 onClick={() => onNavigate(l.slideId)}
-                className="text-xs px-2 py-1 rounded-full transition-all hover:scale-105"
-                style={{ background: "rgba(0,0,0,0.04)", color: mutedColor }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.03] cursor-pointer"
+                style={{ background: "rgba(0,0,0,0.04)", color: "rgba(0,0,0,0.45)", border: "1px solid rgba(0,0,0,0.08)" }}
               >
-                ← {l.title || "Untitled"}
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M17 17L7 7M17 7H7v10" />
+                </svg>
+                {l.title || "Untitled"}
               </button>
             ))}
           </div>
@@ -241,7 +254,7 @@ export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch,
             <button
               key={c.id}
               onClick={() => onNavigate(c.id)}
-              className="px-3 py-1.5 rounded-lg text-xs transition-all hover:bg-black/8 hover:scale-[1.03]"
+              className="px-3 py-1.5 rounded-lg text-xs transition-all hover:bg-black/8 hover:scale-[1.03] cursor-pointer"
               style={{ background: "rgba(0,0,0,0.04)", color: mutedColor }}
             >
               {c.title || "Branch"}
@@ -249,7 +262,7 @@ export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch,
           ))}
           <button
             onClick={() => setShowLinkModal(true)}
-            className="p-2 rounded-lg transition-all hover:bg-black/5 hover:scale-110"
+            className="p-2 rounded-lg transition-all hover:bg-black/5 hover:scale-110 cursor-pointer"
             style={{ color: mutedColor }}
             title="Link to another slide"
           >
@@ -314,7 +327,17 @@ export function SlideRenderer({ node, loading, onNavigate, onContinue, onBranch,
       {/* Link modal */}
       <AnimatePresence>
         {showLinkModal && (
-          <LinkModal slideId={node.id} dark={dark} onClose={() => setShowLinkModal(false)} onLinked={onRefresh} />
+          <LinkModal
+            slideId={node.id}
+            links={links}
+            backlinks={backlinks}
+            onClose={() => setShowLinkModal(false)}
+            onLinked={onRefresh}
+            onNavigate={(id) => {
+              setShowLinkModal(false);
+              onNavigate(id);
+            }}
+          />
         )}
       </AnimatePresence>
     </motion.div>
@@ -328,7 +351,7 @@ function NavButton({ onClick, disabled, direction }: { onClick: () => void; disa
     <button
       onClick={onClick}
       disabled={disabled}
-      className="h-10 w-10 rounded-full flex items-center justify-center transition-all duration-200 disabled:opacity-30 hover:scale-110 hover:bg-black/10 active:scale-95"
+      className="h-10 w-10 rounded-full flex items-center justify-center transition-all duration-200 disabled:opacity-30 hover:scale-110 hover:bg-black/10 active:scale-95 cursor-pointer"
       style={{
         background: "rgba(0,0,0,0.05)",
         color: "rgba(0,0,0,0.5)",
@@ -357,7 +380,7 @@ function ActionButton({ action, onClick, disabled }: { action: SlideAction; onCl
       <button
         onClick={onClick}
         disabled={disabled}
-        className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:shadow-md active:scale-[0.97]"
+        className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:shadow-md active:scale-[0.97] cursor-pointer"
         style={{ background: "#111827", color: "#ffffff" }}
       >
         {disabled ? "Loading..." : action.label}
@@ -370,7 +393,7 @@ function ActionButton({ action, onClick, disabled }: { action: SlideAction; onCl
       <button
         onClick={onClick}
         disabled={disabled}
-        className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:bg-black/10 active:scale-[0.97]"
+        className="px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:bg-black/10 active:scale-[0.97] cursor-pointer"
         style={{ background: "rgba(0,0,0,0.06)", color: "#374151" }}
       >
         {action.label}
@@ -382,7 +405,7 @@ function ActionButton({ action, onClick, disabled }: { action: SlideAction; onCl
     <button
       onClick={onClick}
       disabled={disabled}
-      className="px-5 py-2 rounded-lg text-sm font-medium border transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:bg-black/5 active:scale-[0.97]"
+      className="px-5 py-2 rounded-lg text-sm font-medium border transition-all duration-200 disabled:opacity-40 hover:scale-[1.04] hover:bg-black/5 active:scale-[0.97] cursor-pointer"
       style={{ borderColor: "rgba(0,0,0,0.15)", color: "rgba(0,0,0,0.5)", background: "transparent" }}
     >
       {action.label}
@@ -710,7 +733,7 @@ function QuizBlock({ question, options, explanation, dark, cardBg, cardBorder, m
               key={i}
               onClick={() => !answered && setSelected(i)}
               disabled={answered}
-              className="w-full text-left px-4 py-2.5 rounded-lg text-sm transition-all hover:bg-black/5"
+              className="w-full text-left px-4 py-2.5 rounded-lg text-sm transition-all hover:bg-black/5 cursor-pointer"
               style={{ background: bg, border: `1px solid ${border}` }}
               dangerouslySetInnerHTML={{ __html: mdLite(opt.text) }}
             />
@@ -737,7 +760,7 @@ function CounterBlock({ label, value: init, min, max, step, cardBg, cardBorder }
       <span className="text-sm font-medium">{label}</span>
       <button
         onClick={() => setValue((v: number) => Math.max(min ?? -Infinity, v - s))}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-all hover:bg-black/10 active:scale-90"
+        className="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-all hover:bg-black/10 active:scale-90 cursor-pointer"
         style={{ border: `1px solid ${cardBorder}` }}
       >
         −
@@ -745,7 +768,7 @@ function CounterBlock({ label, value: init, min, max, step, cardBg, cardBorder }
       <span className="w-10 text-center font-mono font-bold text-sm">{value}</span>
       <button
         onClick={() => setValue((v: number) => Math.min(max ?? Infinity, v + s))}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-all hover:bg-black/10 active:scale-90"
+        className="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-all hover:bg-black/10 active:scale-90 cursor-pointer"
         style={{ border: `1px solid ${cardBorder}` }}
       >
         +
@@ -867,6 +890,132 @@ function ChartBlock({ type, title, data, height, dark, mutedColor, cardBg, cardB
           </text>
         ))}
       </svg>
+    </div>
+  );
+}
+
+// ── Audio Controls ──
+
+function extractSlideText(slide: UISlide): string {
+  const parts: string[] = [];
+  if (slide.title) parts.push(slide.title);
+  if (slide.subtitle) parts.push(slide.subtitle);
+  for (const block of slide.blocks) {
+    const p = block.props as Record<string, any>;
+    switch (block.type) {
+      case "text": parts.push(p.content); break;
+      case "heading": parts.push(p.text); break;
+      case "list": if (p.items) parts.push((p.items as string[]).join(". ")); break;
+      case "quote": parts.push(p.text); break;
+      case "callout": if (p.content) parts.push(p.content); break;
+      case "card": parts.push(p.title); if (p.description) parts.push(p.description); break;
+    }
+  }
+  return parts.join(". ").replace(/\*\*/g, "").replace(/\*/g, "").replace(/<[^>]+>/g, "").replace(/&[a-z]+;/gi, " ");
+}
+
+function AudioControls({ slide, autoPlay, onAutoPlayChange }: { slide: UISlide; autoPlay: boolean; onAutoPlayChange: (v: boolean) => void }) {
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const text = useMemo(() => extractSlideText(slide), [slide]);
+
+  useEffect(() => {
+    if (autoPlay && !muted && text && typeof window !== "undefined" && window.speechSynthesis) {
+      const timer = setTimeout(() => speak(text), 500);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  function speak(t: string) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(t);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onend = () => setPlaying(false);
+    utterance.onerror = () => setPlaying(false);
+    window.speechSynthesis.speak(utterance);
+    setPlaying(true);
+  }
+
+  function togglePlay() {
+    if (!window.speechSynthesis) return;
+    if (playing) {
+      window.speechSynthesis.cancel();
+      setPlaying(false);
+    } else {
+      speak(text);
+    }
+  }
+
+  function toggleMute() {
+    if (!muted && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setPlaying(false);
+    }
+    setMuted(!muted);
+  }
+
+  if (!text) return null;
+
+  const btnStyle = "h-7 w-7 rounded-md flex items-center justify-center transition-all hover:bg-black/8 cursor-pointer";
+
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg px-1 py-0.5" style={{ background: "rgba(0,0,0,0.04)" }}>
+      <button
+        onClick={toggleMute}
+        className={btnStyle}
+        title={muted ? "Unmute" : "Mute"}
+        style={{ color: muted ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.5)" }}
+      >
+        {muted ? (
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+          </svg>
+        ) : (
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" />
+            <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" />
+          </svg>
+        )}
+      </button>
+      <button
+        onClick={togglePlay}
+        disabled={muted}
+        className={btnStyle}
+        title={playing ? "Pause" : "Play"}
+        style={{ color: muted ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.5)" }}
+      >
+        {playing ? (
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+        ) : (
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+        )}
+      </button>
+      <button
+        onClick={() => onAutoPlayChange(!autoPlay)}
+        className={`${btnStyle} text-[9px] font-semibold`}
+        title={autoPlay ? "Disable auto-play" : "Enable auto-play"}
+        style={{ color: autoPlay ? "#6366f1" : "rgba(0,0,0,0.3)", background: autoPlay ? "rgba(99,102,241,0.1)" : "transparent", width: "auto", padding: "0 6px" }}
+      >
+        AUTO
+      </button>
     </div>
   );
 }

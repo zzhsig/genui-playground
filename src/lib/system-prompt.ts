@@ -38,7 +38,7 @@ If you have more content, split it across multiple slides using actions — that
 **Make it interactive.** Engage the user with interactive elements:
 - Use **quiz** blocks for knowledge checks after teaching a concept
 - Use **counter** blocks for numeric exploration
-- Use **html** blocks for custom games, simulations, drag-and-drop, sorting, matching, flashcards, or any interactive widget (full HTML/CSS/JS in a sandboxed iframe)
+- Use **html** blocks for custom games, simulations, drag-and-drop, sorting, matching, flashcards, or any interactive widget. React 18, ReactDOM, and Babel are available in the sandbox — write JSX in \`<script type="text/babel">\` blocks and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. You can also use plain HTML/CSS/JS.
 - At least every 3rd slide should have an interactive element
 - When the user clicks "Quiz me", create a quiz. When they click "Try it", create an html simulation.
 

@@ -3,9 +3,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { SlideRenderer } from "@/components/slide-renderer";
+import { SlideGraph } from "@/components/slide-graph";
 import { PromptInput } from "@/components/prompt-input";
 import { GenerationProgress } from "@/components/generation-progress";
-import { Button } from "@/components/ui/button";
 import type { SlideNode } from "@/lib/types";
 
 // ── SSE stream helper ──
@@ -110,6 +110,18 @@ interface SlideListItem {
 
 const LAST_SLIDE_KEY = "genui-last-slide";
 
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function Home() {
   const [currentNode, setCurrentNode] = useState<SlideNode | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -117,6 +129,8 @@ export default function Home() {
   const [history, setHistory] = useState<string[]>([]);
   const [recentSlides, setRecentSlides] = useState<SlideListItem[]>([]);
   const [lastSlideId, setLastSlideId] = useState<string | null>(null);
+  const [showGraph, setShowGraph] = useState(false);
+  const [autoPlayAudio, setAutoPlayAudio] = useState(false);
 
   const pregenRef = useRef<{ id: string; promise: Promise<string | null> } | null>(null);
   const branchPregenRef = useRef<Map<string, Promise<string | null>>>(new Map());
@@ -130,6 +144,7 @@ export default function Home() {
       .then((data: SlideListItem[]) => setRecentSlides(data))
       .catch(() => {});
     setLastSlideId(localStorage.getItem(LAST_SLIDE_KEY));
+    setAutoPlayAudio(localStorage.getItem("genui-auto-audio") === "true");
   }, []);
 
   // Load a slide from the DB
@@ -403,6 +418,11 @@ export default function Home() {
     if (currentNode) loadSlide(currentNode.id, false);
   }, [currentNode, loadSlide]);
 
+  const handleAutoPlayChange = useCallback((value: boolean) => {
+    setAutoPlayAudio(value);
+    localStorage.setItem("genui-auto-audio", value.toString());
+  }, []);
+
   const handleReset = () => {
     setCurrentNode(null);
     setGenerating(false);
@@ -415,8 +435,11 @@ export default function Home() {
       .catch(() => {});
   };
 
-  // Root slides for landing page display
-  const rootSlides = recentSlides.filter((s) => s.parentId === null);
+  const [historySearch, setHistorySearch] = useState("");
+
+  const filteredSlides = historySearch.trim()
+    ? recentSlides.filter((s) => (s.title || "").toLowerCase().includes(historySearch.toLowerCase()))
+    : recentSlides;
 
   // ── UI ──
 
@@ -429,82 +452,136 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="flex flex-col items-center gap-8 px-6 max-w-2xl w-full"
+            className="flex flex-col items-center gap-6 px-6 w-full max-w-xl"
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-14 w-14 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                <svg
-                  className="h-7 w-7 text-white/80"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                >
+            {/* Branding */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center border border-white/[0.08]">
+                <svg className="h-6 w-6 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <h1 className="text-4xl font-bold tracking-tight text-white">Generative Learning Slides</h1>
-              <p className="text-white/40 text-center max-w-sm text-sm">
-                Ask any topic and explore it interactively, one slide at a time.
-              </p>
+              <h1 className="text-2xl font-bold tracking-tight text-white">Lantern</h1>
+              <p className="text-white/35 text-center text-sm">Illuminating concepts step by step in the dark.</p>
             </div>
 
+            {/* Prompt */}
             <PromptInput onSubmit={(prompt) => generateRoot(prompt)} loading={false} compact={false} />
 
-            <div className="flex flex-wrap gap-2 justify-center">
-              {["Explain quantum computing", "History of space exploration", "Build a memory game"].map((s) => (
-                <Button
+            {/* Suggestions */}
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {["Quantum computing", "Build a memory game"].map((s) => (
+                <button
                   key={s}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs text-white/50 border-white/10 hover:bg-white/5 hover:text-white/80"
                   onClick={() => generateRoot(s)}
+                  className="px-3 py-1.5 rounded-lg text-xs text-white/40 border border-white/[0.07] hover:bg-white/5 hover:text-white/70 transition-all cursor-pointer"
                 >
                   {s}
-                </Button>
+                </button>
               ))}
             </div>
 
-            {/* Resume last slide */}
-            {lastSlideId && (
-              <button
-                onClick={() => loadSlide(lastSlideId)}
-                className="text-sm text-white/50 hover:text-white/80 transition-colors flex items-center gap-2"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-                Resume where you left off
-              </button>
-            )}
-
-            {/* Recent slides */}
-            {rootSlides.length > 0 && (
-              <div className="w-full max-w-md">
-                <div className="text-xs text-white/30 uppercase tracking-wider mb-2">Recent topics</div>
-                <div className="flex flex-col gap-1">
-                  {rootSlides.slice(0, 5).map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => loadSlide(s.id)}
-                      className="text-left px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white/90 hover:bg-white/5 transition-all flex items-center justify-between group"
-                    >
-                      <span className="truncate">{s.title || "Untitled"}</span>
-                      <svg
-                        className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
+            {/* History panel */}
+            {recentSlides.length > 0 && (
+              <div className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-white/50">Your slides</span>
+                    <span className="text-[10px] text-white/25 tabular-nums">{recentSlides.length}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {lastSlideId && (
+                      <button
+                        onClick={() => loadSlide(lastSlideId)}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-indigo-400/80 hover:bg-indigo-400/10 transition-all cursor-pointer"
+                        title="Resume where you left off"
                       >
-                        <path d="M9 18l6-6-6-6" />
+                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        Resume
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowGraph(true)}
+                      className="p-1.5 rounded-md text-white/30 hover:text-white/60 hover:bg-white/5 transition-all cursor-pointer"
+                      title="Slide map"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <circle cx="12" cy="12" r="2" />
+                        <circle cx="6" cy="6" r="2" />
+                        <circle cx="18" cy="6" r="2" />
+                        <line x1="8" y1="7.5" x2="10.5" y2="10.5" />
+                        <line x1="13.5" y1="10.5" x2="16" y2="7.5" />
                       </svg>
                     </button>
-                  ))}
+                  </div>
+                </div>
+
+                {/* Scrollable list */}
+                <div className="max-h-[240px] overflow-y-auto">
+                  {filteredSlides.length === 0 && (
+                    <div className="px-4 py-6 text-center text-xs text-white/20">
+                      {historySearch.trim() ? "No matching slides" : "No slides yet"}
+                    </div>
+                  )}
+                  {filteredSlides.map((s) => {
+                    const isLast = s.id === lastSlideId;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => loadSlide(s.id)}
+                        className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.03] transition-all group cursor-pointer border-b border-white/[0.03] last:border-b-0"
+                      >
+                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isLast ? "bg-indigo-400" : s.parentId ? "bg-white/10" : "bg-white/20"}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm truncate ${isLast ? "text-white/90" : "text-white/55"} group-hover:text-white/90 transition-colors`}>
+                            {s.title || "Untitled"}
+                          </div>
+                          {s.createdAt && (
+                            <div className="text-[10px] text-white/20 mt-0.5">{relativeTime(s.createdAt)}</div>
+                          )}
+                        </div>
+                        <svg
+                          className="h-3.5 w-3.5 shrink-0 text-white/0 group-hover:text-white/30 transition-colors"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search bar at the bottom */}
+                <div className="px-3 py-2 border-t border-white/[0.06]">
+                  <div className="relative">
+                    <svg
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/20 pointer-events-none"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      placeholder="Search slides..."
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-xs text-white/70 placeholder:text-white/20 outline-none focus:border-white/15 transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -536,6 +613,8 @@ export default function Home() {
                   key={currentNode.id}
                   node={currentNode}
                   loading={generating}
+                  autoPlayAudio={autoPlayAudio}
+                  onAutoPlayChange={handleAutoPlayChange}
                   onNavigate={handleNavigate}
                   onContinue={handleContinue}
                   onBranch={handleBranch}
@@ -555,16 +634,31 @@ export default function Home() {
               </div>
             )}
 
-            {/* Reset button */}
+            {/* Map + Reset buttons */}
             {currentNode && !generating && (
-              <button
-                onClick={handleReset}
-                className="absolute top-3 right-3 z-20 h-8 w-8 rounded-lg bg-black/40 hover:bg-black/60 flex items-center justify-center text-white/60 hover:text-white transition-all backdrop-blur-sm"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
+                <button
+                  onClick={() => setShowGraph(true)}
+                  className="h-8 w-8 rounded-lg bg-black/40 hover:bg-black/60 flex items-center justify-center text-white/60 hover:text-white transition-all backdrop-blur-sm cursor-pointer"
+                  title="Slide map"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="6" cy="6" r="2" />
+                    <circle cx="18" cy="6" r="2" />
+                    <line x1="8" y1="7.5" x2="10.5" y2="10.5" />
+                    <line x1="13.5" y1="10.5" x2="16" y2="7.5" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="h-8 w-8 rounded-lg bg-black/40 hover:bg-black/60 flex items-center justify-center text-white/60 hover:text-white transition-all backdrop-blur-sm cursor-pointer"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             )}
           </div>
 
@@ -584,6 +678,20 @@ export default function Home() {
           )}
         </motion.div>
       )}
+
+      {/* Graph overlay */}
+      <AnimatePresence>
+        {showGraph && (
+          <SlideGraph
+            onNavigate={(slideId) => {
+              setShowGraph(false);
+              loadSlide(slideId);
+            }}
+            onClose={() => setShowGraph(false)}
+            currentSlideId={currentNode?.id}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
