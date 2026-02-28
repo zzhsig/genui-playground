@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import type { UISlide, UIBlock } from "@/lib/types";
+import type { UISlide } from "@/lib/types";
+import { BlockRenderer } from "./slide-renderer";
 
 interface LinkModalProps {
   slideId: string;
   links: { id: string; slideId: string; title: string | null }[];
   backlinks: { id: string; slideId: string; title: string | null }[];
-  branches: { id: string; title: string | null; isMain: boolean }[];
   onClose: () => void;
   onLinked: () => void;
   onNavigate: (slideId: string) => void;
@@ -26,7 +26,7 @@ interface SlidePreview {
   slide: UISlide;
 }
 
-export function LinkModal({ slideId, links, backlinks, branches, onClose, onLinked, onNavigate }: LinkModalProps) {
+export function LinkModal({ slideId, links, backlinks, onClose, onLinked, onNavigate }: LinkModalProps) {
   const [query, setQuery] = useState("");
   const [allSlides, setAllSlides] = useState<SlideItem[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -192,28 +192,6 @@ export function LinkModal({ slideId, links, backlinks, branches, onClose, onLink
                 </div>
               )}
             </div>
-
-            {/* Branches */}
-            {branches.length > 0 && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "rgba(0,0,0,0.35)" }}>
-                  Branches ({branches.length})
-                </div>
-                <div className="space-y-0.5">
-                  {branches.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => { onNavigate(b.id); onClose(); }}
-                      onMouseEnter={() => fetchPreview(b.id)}
-                      onMouseLeave={clearPreview}
-                      className="block text-xs truncate cursor-pointer underline decoration-black/20 underline-offset-2 hover:decoration-indigo-400 hover:text-indigo-600 transition-colors"
-                    >
-                      {b.title || "Branch"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Center column — All slides */}
@@ -271,7 +249,7 @@ export function LinkModal({ slideId, links, backlinks, branches, onClose, onLink
           </div>
 
           {/* Right column — Preview */}
-          <div className="w-[260px] shrink-0 overflow-y-auto">
+          <div className="w-[260px] shrink-0 overflow-hidden flex items-center justify-center">
             {preview && hoveredId ? (
               <SlidePreviewCard slide={preview.slide} />
             ) : (
@@ -292,7 +270,12 @@ export function LinkModal({ slideId, links, backlinks, branches, onClose, onLink
   );
 }
 
-// ── Slide Preview Card ──
+// ── Scaled Slide Preview ──
+
+const VIRTUAL_W = 960;
+const VIRTUAL_H = 600;
+const PREVIEW_W = 244;
+const SCALE = PREVIEW_W / VIRTUAL_W;
 
 function SlidePreviewCard({ slide }: { slide: UISlide }) {
   const bg = slide.background || "#ffffff";
@@ -301,190 +284,45 @@ function SlidePreviewCard({ slide }: { slide: UISlide }) {
   const mutedColor = dark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.45)";
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Mini slide */}
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{
+        width: PREVIEW_W,
+        height: VIRTUAL_H * SCALE,
+        border: "1px solid rgba(0,0,0,0.1)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+      }}
+    >
       <div
-        className="m-2 rounded-lg flex-1 flex flex-col overflow-hidden"
-        style={{ background: bg, color: textColor, border: "1px solid rgba(0,0,0,0.08)" }}
+        className="flex flex-col items-center justify-center px-16 py-8 gap-3 pointer-events-none"
+        style={{
+          width: VIRTUAL_W,
+          height: VIRTUAL_H,
+          transform: `scale(${SCALE})`,
+          transformOrigin: "top left",
+          background: bg,
+          color: textColor,
+          overflow: "hidden",
+        }}
       >
-        <div className="p-3 flex-1 flex flex-col gap-1.5 overflow-hidden">
-          {slide.title && (
-            <div className="text-xs font-bold leading-tight line-clamp-2">{slide.title}</div>
-          )}
-          {slide.subtitle && (
-            <div className="text-[10px] leading-tight line-clamp-2" style={{ color: mutedColor }}>
-              {slide.subtitle}
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 mt-1 overflow-hidden flex-1">
-            {slide.blocks.slice(0, 3).map((block) => (
-              <MiniBlock key={block.id} block={block} dark={dark} mutedColor={mutedColor} />
-            ))}
-            {slide.blocks.length > 3 && (
-              <div className="text-[9px] text-center" style={{ color: mutedColor }}>
-                +{slide.blocks.length - 3} more
-              </div>
-            )}
-          </div>
-        </div>
-        {/* Mini actions */}
-        {slide.actions && slide.actions.length > 0 && (
-          <div className="px-3 pb-2 flex gap-1 flex-wrap">
-            {slide.actions.slice(0, 3).map((a, i) => (
-              <span
-                key={i}
-                className="text-[8px] px-1.5 py-0.5 rounded"
-                style={{
-                  background: dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
-                  color: mutedColor,
-                }}
-              >
-                {a.label}
-              </span>
-            ))}
-          </div>
+        {slide.title && (
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-center leading-tight max-w-3xl">
+            {slide.title}
+          </h1>
         )}
+        {slide.subtitle && (
+          <p className="text-base text-center max-w-2xl leading-relaxed" style={{ color: mutedColor }}>
+            {slide.subtitle}
+          </p>
+        )}
+        <div className="flex flex-col items-center w-full max-w-4xl gap-4 mt-4 overflow-hidden">
+          {slide.blocks.map((block) => (
+            <div key={block.id} className="w-full">
+              <BlockRenderer block={block} dark={dark} mutedColor={mutedColor} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
-}
-
-// ── Mini Block Renderer (simplified for preview) ──
-
-function MiniBlock({ block, dark, mutedColor }: { block: UIBlock; dark: boolean; mutedColor: string }) {
-  const p = block.props as Record<string, any>;
-  const cardBg = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)";
-
-  switch (block.type) {
-    case "heading":
-      return <div className="text-[10px] font-semibold leading-tight line-clamp-1">{p.text}</div>;
-
-    case "text":
-      return (
-        <div
-          className="text-[9px] leading-tight line-clamp-2"
-          style={{ color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}
-        >
-          {(p.content as string).replace(/\*\*/g, "").replace(/\*/g, "").replace(/<[^>]+>/g, "")}
-        </div>
-      );
-
-    case "list":
-      return (
-        <div className="space-y-0.5">
-          {(p.items as string[]).slice(0, 3).map((item, i) => (
-            <div key={i} className="text-[9px] leading-tight flex gap-1" style={{ color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}>
-              <span className="opacity-40 select-none shrink-0">{"\u2022"}</span>
-              <span className="line-clamp-1">{item.replace(/\*\*/g, "").replace(/\*/g, "")}</span>
-            </div>
-          ))}
-        </div>
-      );
-
-    case "stats":
-      return (
-        <div className="flex gap-1">
-          {(p.items as any[]).slice(0, 3).map((item: any, i: number) => (
-            <div key={i} className="text-center px-1.5 py-1 rounded flex-1" style={{ background: cardBg }}>
-              <div className="text-[10px] font-bold">{item.value}</div>
-              <div className="text-[7px]" style={{ color: mutedColor }}>{item.label}</div>
-            </div>
-          ))}
-        </div>
-      );
-
-    case "chart":
-      return (
-        <div className="rounded px-2 py-1.5 flex items-center gap-1.5" style={{ background: cardBg }}>
-          <svg className="h-3 w-3 shrink-0" style={{ color: mutedColor }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 20V10M12 20V4M6 20v-6" />
-          </svg>
-          <span className="text-[9px]" style={{ color: mutedColor }}>{p.title || `${p.type} chart`}</span>
-        </div>
-      );
-
-    case "quote":
-      return (
-        <div className="text-[9px] italic leading-tight line-clamp-2 pl-2" style={{ borderLeft: "2px solid rgba(0,0,0,0.15)", color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}>
-          {p.text}
-        </div>
-      );
-
-    case "callout":
-      return (
-        <div className="rounded px-2 py-1 text-[9px] leading-tight line-clamp-2" style={{ background: cardBg, color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}>
-          {p.title && <span className="font-semibold">{p.title}: </span>}
-          {(p.content as string).replace(/<[^>]+>/g, "")}
-        </div>
-      );
-
-    case "code":
-      return (
-        <div className="rounded px-2 py-1.5 flex items-center gap-1.5" style={{ background: cardBg }}>
-          <svg className="h-3 w-3 shrink-0" style={{ color: mutedColor }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
-          </svg>
-          <span className="text-[9px]" style={{ color: mutedColor }}>{p.title || p.language || "code"}</span>
-        </div>
-      );
-
-    case "quiz":
-      return (
-        <div className="rounded px-2 py-1.5" style={{ background: cardBg }}>
-          <div className="text-[9px] font-medium line-clamp-1">{p.question}</div>
-          <div className="text-[8px] mt-0.5" style={{ color: mutedColor }}>{(p.options as any[]).length} options</div>
-        </div>
-      );
-
-    case "html":
-      return (
-        <div className="rounded px-2 py-1.5 flex items-center gap-1.5" style={{ background: cardBg }}>
-          <svg className="h-3 w-3 shrink-0" style={{ color: mutedColor }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
-          </svg>
-          <span className="text-[9px]" style={{ color: mutedColor }}>Interactive widget</span>
-        </div>
-      );
-
-    case "image":
-      return (
-        <div className="rounded px-2 py-1.5 flex items-center gap-1.5" style={{ background: cardBg }}>
-          <svg className="h-3 w-3 shrink-0" style={{ color: mutedColor }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-          </svg>
-          <span className="text-[9px] line-clamp-1" style={{ color: mutedColor }}>{p.alt || p.caption || "Image"}</span>
-        </div>
-      );
-
-    case "timeline":
-      return (
-        <div className="space-y-0.5 pl-2" style={{ borderLeft: "2px solid rgba(0,0,0,0.1)" }}>
-          {(p.items as any[]).slice(0, 2).map((item: any, i: number) => (
-            <div key={i}>
-              <div className="text-[8px]" style={{ color: mutedColor }}>{item.date}</div>
-              <div className="text-[9px] font-medium line-clamp-1">{item.title}</div>
-            </div>
-          ))}
-        </div>
-      );
-
-    case "table":
-      return (
-        <div className="rounded px-2 py-1.5 flex items-center gap-1.5" style={{ background: cardBg }}>
-          <svg className="h-3 w-3 shrink-0" style={{ color: mutedColor }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
-          </svg>
-          <span className="text-[9px]" style={{ color: mutedColor }}>
-            {(p.headers as string[]).length} cols, {(p.rows as string[][]).length} rows
-          </span>
-        </div>
-      );
-
-    default:
-      return (
-        <div className="rounded px-2 py-1 text-[9px]" style={{ background: cardBg, color: mutedColor }}>
-          {block.type}
-        </div>
-      );
-  }
 }

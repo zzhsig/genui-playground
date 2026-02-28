@@ -146,7 +146,7 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
     return !label.startsWith("continue") && !label.startsWith("next");
   });
 
-  const branchChildren = node.children.filter((c) => !c.isMain);
+  const isComplete = (slide.actions || []).some((a) => a.label.toLowerCase().includes("start over"));
 
   return (
     <motion.div
@@ -217,8 +217,8 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
             onClick={() => setShowLinkModal(true)}
             className="relative h-8 rounded-lg px-2 flex items-center gap-1.5 transition-all hover:scale-[1.04] cursor-pointer"
             style={{
-              background: links.length + backlinks.length + branchChildren.length > 0 ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.04)",
-              color: links.length + backlinks.length + branchChildren.length > 0 ? "#6366f1" : mutedColor,
+              background: links.length + backlinks.length > 0 ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.04)",
+              color: links.length + backlinks.length > 0 ? "#6366f1" : mutedColor,
             }}
             title="Linked slides"
           >
@@ -226,8 +226,8 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
               <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
             </svg>
-            {links.length + backlinks.length + branchChildren.length > 0 && (
-              <span className="text-[10px] font-semibold">{links.length + backlinks.length + branchChildren.length}</span>
+            {links.length + backlinks.length > 0 && (
+              <span className="text-[10px] font-semibold">{links.length + backlinks.length}</span>
             )}
           </button>
         </div>
@@ -239,9 +239,9 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
           ))}
         </div>
 
-        {/* Right arrow — continue main path */}
+        {/* Right arrow — continue main path (hidden on completion slides) */}
         <div className="w-24 flex justify-end">
-          <NavButton onClick={onContinue} disabled={loading} direction="right" />
+          {!isComplete && <NavButton onClick={onContinue} disabled={loading} direction="right" />}
         </div>
       </div>
 
@@ -297,7 +297,7 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
             slideId={node.id}
             links={links}
             backlinks={backlinks}
-            branches={branchChildren}
+
             onClose={() => setShowLinkModal(false)}
             onLinked={onRefresh}
             onNavigate={(id) => {
@@ -382,7 +382,7 @@ function ActionButton({ action, onClick, disabled }: { action: SlideAction; onCl
 
 // ── Block Renderer ──
 
-function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dark: boolean; mutedColor: string }) {
+export function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dark: boolean; mutedColor: string }) {
   const p = block.props as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const children = block.children;
   const cardBg = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)";
