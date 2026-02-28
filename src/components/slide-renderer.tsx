@@ -201,76 +201,42 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
           ))}
         </div>
 
-        {/* Links & backlinks */}
-        {(links.length > 0 || backlinks.length > 0) && (
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            {links.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => onNavigate(l.slideId)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.03] cursor-pointer"
-                style={{ background: "rgba(99,102,241,0.08)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.15)" }}
-              >
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M7 17L17 7M7 7h10v10" />
-                </svg>
-                {l.title || "Untitled"}
-              </button>
-            ))}
-            {backlinks.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => onNavigate(l.slideId)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.03] cursor-pointer"
-                style={{ background: "rgba(0,0,0,0.04)", color: "rgba(0,0,0,0.45)", border: "1px solid rgba(0,0,0,0.08)" }}
-              >
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M17 17L7 7M17 7H7v10" />
-                </svg>
-                {l.title || "Untitled"}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Links/backlinks are shown in the LinkModal via the link button below */}
       </div>
 
       {/* Bottom bar: ◀ [branch actions + link btn] ▶ */}
       <div className="flex items-end justify-between px-6 pb-6 pt-2">
-        {/* Left arrow — go to parent */}
-        <div className="w-24 flex justify-start">
+        {/* Left — back arrow + link button */}
+        <div className="flex items-center gap-2">
           {parentId ? (
             <NavButton onClick={() => onNavigate(parentId)} disabled={loading} direction="left" />
           ) : (
             <div className="w-10" />
           )}
+          <button
+            onClick={() => setShowLinkModal(true)}
+            className="relative h-8 rounded-lg px-2 flex items-center gap-1.5 transition-all hover:scale-[1.04] cursor-pointer"
+            style={{
+              background: links.length + backlinks.length + branchChildren.length > 0 ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.04)",
+              color: links.length + backlinks.length + branchChildren.length > 0 ? "#6366f1" : mutedColor,
+            }}
+            title="Linked slides"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+            </svg>
+            {links.length + backlinks.length + branchChildren.length > 0 && (
+              <span className="text-[10px] font-semibold">{links.length + backlinks.length + branchChildren.length}</span>
+            )}
+          </button>
         </div>
 
-        {/* Center — branch actions + link button */}
+        {/* Center — branch actions */}
         <div className="flex items-center gap-2 flex-wrap justify-center">
           {branchActions.map((action, i) => (
             <ActionButton key={i} action={action} onClick={() => onBranch(action.prompt)} disabled={loading} />
           ))}
-          {branchChildren.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onNavigate(c.id)}
-              className="px-3 py-1.5 rounded-lg text-xs transition-all hover:bg-black/8 hover:scale-[1.03] cursor-pointer"
-              style={{ background: "rgba(0,0,0,0.04)", color: mutedColor }}
-            >
-              {c.title || "Branch"}
-            </button>
-          ))}
-          <button
-            onClick={() => setShowLinkModal(true)}
-            className="p-2 rounded-lg transition-all hover:bg-black/5 hover:scale-110 cursor-pointer"
-            style={{ color: mutedColor }}
-            title="Link to another slide"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-            </svg>
-          </button>
         </div>
 
         {/* Right arrow — continue main path */}
@@ -331,6 +297,7 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
             slideId={node.id}
             links={links}
             backlinks={backlinks}
+            branches={branchChildren}
             onClose={() => setShowLinkModal(false)}
             onLinked={onRefresh}
             onNavigate={(id) => {
