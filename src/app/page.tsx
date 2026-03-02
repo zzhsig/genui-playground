@@ -6,7 +6,7 @@ import { SlideRenderer } from "@/components/slide-renderer";
 import { SlideGraph } from "@/components/slide-graph";
 import { PromptInput } from "@/components/prompt-input";
 import { GenerationProgress } from "@/components/generation-progress";
-import type { SlideNode } from "@/lib/types";
+import type { SlideNode, UISlide } from "@/lib/types";
 
 // ── SSE stream helper ──
 
@@ -16,7 +16,8 @@ async function fetchSSE(
   cb: {
     onStatus?: (msg: string, step?: string) => void;
     onSlide?: (slide: any) => void;
-    onDone?: (data: any) => void;
+    onSlidePartial?: (slide: any) => void;
+    onDone?: (data: any) => void | Promise<void>;
     onError?: (msg: string) => void;
   },
 ) {
@@ -48,8 +49,11 @@ async function fetchSSE(
           case "slide":
             cb.onSlide?.(ev.slide);
             break;
+          case "slide_partial":
+            cb.onSlidePartial?.(ev.slide);
+            break;
           case "done":
-            cb.onDone?.(ev);
+            await cb.onDone?.(ev);
             break;
           case "error":
             cb.onError?.(ev.message);
@@ -62,39 +66,88 @@ async function fetchSSE(
   }
 }
 
-// Consume a response silently (handles both JSON and SSE), return the slideId
-async function consumeSSE(res: Response): Promise<string | null> {
-  const ct = res.headers.get("content-type") || "";
+// ── PregenHandle: subscribe to partial slides during pre-generation ──
 
-  // JSON response — branch/continue already exists
-  if (ct.includes("application/json")) {
-    const data = await res.json();
-    return (data.slideId as string) || null;
-  }
+interface PregenHandle {
+  promise: Promise<string | null>;
+  partialSlide: UISlide | null;
+  subscribe(cb: (slide: UISlide) => void): () => void;
+}
 
-  // SSE stream — new generation
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  let resultId: string | null = null;
+function createPregenHandle(fetchPromise: Promise<Response>): PregenHandle {
+  let latestPartial: UISlide | null = null;
+  const subscribers = new Set<(slide: UISlide) => void>();
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        const ev = JSON.parse(line.slice(6));
-        if (ev.type === "done" && ev.slideId) resultId = ev.slideId;
-      } catch {
-        /* skip */
+  const notify = (slide: UISlide) => {
+    latestPartial = slide;
+    for (const cb of subscribers) cb(slide);
+  };
+
+  const promise = (async (): Promise<string | null> => {
+    try {
+      const res = await fetchPromise;
+      const ct = res.headers.get("content-type") || "";
+
+      // JSON response — already cached
+      if (ct.includes("application/json")) {
+        const data = await res.json();
+        return (data.slideId as string) || null;
       }
+
+      // SSE stream
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let resultId: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "slide_partial" && ev.slide) notify(ev.slide);
+            if (ev.type === "slide" && ev.slide) notify(ev.slide);
+            if (ev.type === "done" && ev.slideId) resultId = ev.slideId;
+          } catch {
+            /* skip */
+          }
+        }
+      }
+      return resultId;
+    } catch {
+      return null;
     }
-  }
-  return resultId;
+  })();
+
+  return {
+    promise,
+    get partialSlide() { return latestPartial; },
+    subscribe(cb) {
+      subscribers.add(cb);
+      return () => { subscribers.delete(cb); };
+    },
+  };
+}
+
+// Create a minimal SlideNode wrapper for preview rendering
+function syntheticNode(slide: UISlide): SlideNode {
+  return {
+    id: "preview",
+    slide,
+    parentId: null,
+    mainChildId: null,
+    conversationHistory: [],
+    children: [],
+    links: [],
+    backlinks: [],
+    chats: [],
+    createdAt: Date.now(),
+  };
 }
 
 // ── Types ──
@@ -132,9 +185,13 @@ export default function Home() {
   const [showGraph, setShowGraph] = useState(false);
   const [autoPlayAudio, setAutoPlayAudio] = useState(false);
 
-  const pregenRef = useRef<{ id: string; promise: Promise<string | null> } | null>(null);
-  const branchPregenRef = useRef<Map<string, Promise<string | null>>>(new Map());
+  const [previewSlide, setPreviewSlide] = useState<UISlide | null>(null);
+
+  const pregenRef = useRef<{ id: string; handle: PregenHandle } | null>(null);
+  const branchPregenRef = useRef<Map<string, PregenHandle>>(new Map());
   const pregenAbortRef = useRef<AbortController | null>(null);
+  const generatingRef = useRef(false);
+  generatingRef.current = generating;
   const started = currentNode !== null || generating;
 
   // Fetch recent slides and last visited on mount
@@ -168,7 +225,7 @@ export default function Home() {
 
   // Pre-generate main child + branch actions when a slide loads
   useEffect(() => {
-    if (!currentNode || generating) return;
+    if (!currentNode || generatingRef.current) return;
     const slideId = currentNode.id;
 
     // Cancel previous pre-gen cycle
@@ -179,26 +236,16 @@ export default function Home() {
 
     // 1. Pre-gen main child (right arrow)
     if (!currentNode.mainChildId) {
-      const promise = (async (): Promise<string | null> => {
-        try {
-          const res = await fetch(`/api/slides/${slideId}/continue`, {
-            method: "POST",
-            signal: abort.signal,
-          });
-          const ct = res.headers.get("content-type") || "";
-          if (ct.includes("application/json")) {
-            const data = await res.json();
-            return data.slideId as string;
-          }
-          return await consumeSSE(res);
-        } catch {
-          return null;
-        }
-      })();
+      const handle = createPregenHandle(
+        fetch(`/api/slides/${slideId}/continue`, {
+          method: "POST",
+          signal: abort.signal,
+        })
+      );
 
-      pregenRef.current = { id: slideId, promise };
+      pregenRef.current = { id: slideId, handle };
 
-      promise.then((childId) => {
+      handle.promise.then((childId) => {
         if (childId && !abort.signal.aborted && pregenRef.current?.id === slideId) {
           loadSlide(slideId, false);
         }
@@ -212,25 +259,19 @@ export default function Home() {
     });
 
     for (const action of actions) {
-      const promise = (async (): Promise<string | null> => {
-        try {
-          const res = await fetch(`/api/slides/${slideId}/branch`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: action.prompt }),
-            signal: abort.signal,
-          });
-          return await consumeSSE(res);
-        } catch {
-          return null;
-        }
-      })();
+      const handle = createPregenHandle(
+        fetch(`/api/slides/${slideId}/branch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: action.prompt }),
+          signal: abort.signal,
+        })
+      );
 
-      branchPregenRef.current.set(action.prompt, promise);
+      branchPregenRef.current.set(action.prompt, handle);
 
-      promise.then((childId) => {
-        if (childId && !abort.signal.aborted) {
-          // Silently refresh to show branch chips
+      handle.promise.then((childId) => {
+        if (childId && !abort.signal.aborted && branchPregenRef.current.get(action.prompt) === handle) {
           loadSlide(slideId, false);
         }
       });
@@ -241,7 +282,7 @@ export default function Home() {
       pregenRef.current = null;
       branchPregenRef.current = new Map();
     };
-  }, [currentNode?.id, generating, loadSlide]);
+  }, [currentNode?.id, loadSlide]);
 
   // Generate a root slide (initial prompt)
   const generateRoot = useCallback(
@@ -260,20 +301,24 @@ export default function Home() {
           },
           {
             onStatus: (msg, step) => setSteps((p) => [...p, { message: msg, step, time: Date.now() }]),
+            onSlidePartial: (slide) => setPreviewSlide(slide),
             onDone: async (data) => {
               if (data.slideId) {
                 await loadSlide(data.slideId);
               }
+              setPreviewSlide(null);
               setGenerating(false);
             },
             onError: (msg) => {
               setSteps((p) => [...p, { message: `Error: ${msg}`, time: Date.now() }]);
+              setPreviewSlide(null);
               setGenerating(false);
             },
           },
         );
       } catch (e) {
         setSteps((p) => [...p, { message: e instanceof Error ? e.message : "Error", time: Date.now() }]);
+        setPreviewSlide(null);
         setGenerating(false);
       }
     },
@@ -298,66 +343,57 @@ export default function Home() {
       return;
     }
 
-    // If pre-gen is in progress for this slide, wait for it
-    if (pregenRef.current?.id === currentNode.id && pregenRef.current.promise) {
+    // If pre-gen is in progress for this slide, subscribe for progressive rendering
+    if (pregenRef.current?.id === currentNode.id && pregenRef.current.handle) {
+      const handle = pregenRef.current.handle;
+      pregenRef.current = null; // prevent .then() from racing with navigation
       setGenerating(true);
       setSteps([{ message: "Generating next slide...", time: Date.now() }]);
-      const childId = await pregenRef.current.promise;
+
+      // Show partial immediately if available
+      if (handle.partialSlide) setPreviewSlide(handle.partialSlide);
+
+      // Subscribe to live updates
+      const unsub = handle.subscribe((slide) => setPreviewSlide(slide));
+      const childId = await handle.promise;
+      unsub();
+
       if (childId) {
         await loadSlide(childId);
+        setPreviewSlide(null);
+        setGenerating(false);
+        return;
       }
-      setGenerating(false);
-      return;
+      setPreviewSlide(null);
+      // Pre-gen failed, fall through to fresh generation
     }
 
-    // Generate main child (fallback)
+    // Generate main child (fallback with progressive rendering)
     setGenerating(true);
     setSteps([]);
 
     try {
-      const res = await fetch(`/api/slides/${currentNode.id}/continue`, { method: "POST" });
-
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-        if (data.slideId) await loadSlide(data.slideId);
-        setGenerating(false);
-        return;
-      }
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === "status") setSteps((p) => [...p, { message: ev.message, step: ev.step, time: Date.now() }]);
-            if (ev.type === "thinking")
-              setSteps((p) => [...p, { message: ev.text?.slice(0, 120), step: "thinking", time: Date.now() }]);
-            if (ev.type === "done" && ev.slideId) {
-              await loadSlide(ev.slideId);
-              setGenerating(false);
-            }
-            if (ev.type === "error") {
-              setSteps((p) => [...p, { message: `Error: ${ev.message}`, time: Date.now() }]);
-              setGenerating(false);
-            }
-          } catch {
-            /* skip */
-          }
-        }
-      }
+      await fetchSSE(
+        `/api/slides/${currentNode.id}/continue`,
+        { method: "POST" },
+        {
+          onStatus: (msg, step) => setSteps((p) => [...p, { message: msg, step, time: Date.now() }]),
+          onSlidePartial: (slide) => setPreviewSlide(slide),
+          onDone: async (data) => {
+            if (data.slideId) await loadSlide(data.slideId);
+            setPreviewSlide(null);
+            setGenerating(false);
+          },
+          onError: (msg) => {
+            setSteps((p) => [...p, { message: `Error: ${msg}`, time: Date.now() }]);
+            setPreviewSlide(null);
+            setGenerating(false);
+          },
+        },
+      );
     } catch (e) {
       setSteps((p) => [...p, { message: e instanceof Error ? e.message : "Error", time: Date.now() }]);
+      setPreviewSlide(null);
       setGenerating(false);
     }
   }, [currentNode, loadSlide]);
@@ -368,20 +404,28 @@ export default function Home() {
       if (!currentNode) return;
 
       // Check if pre-gen has this prompt
-      const pregenPromise = branchPregenRef.current.get(prompt);
-      if (pregenPromise) {
+      const handle = branchPregenRef.current.get(prompt);
+      if (handle) {
+        branchPregenRef.current.delete(prompt); // prevent .then() from racing with navigation
         setGenerating(true);
         setSteps([{ message: "Preparing slide...", time: Date.now() }]);
-        const childId = await pregenPromise;
+
+        if (handle.partialSlide) setPreviewSlide(handle.partialSlide);
+        const unsub = handle.subscribe((slide) => setPreviewSlide(slide));
+        const childId = await handle.promise;
+        unsub();
+
         if (childId) {
           await loadSlide(childId);
+          setPreviewSlide(null);
           setGenerating(false);
           return;
         }
+        setPreviewSlide(null);
         // Pre-gen failed, fall through to fresh generation
       }
 
-      // Generate fresh (fallback)
+      // Generate fresh (fallback with progressive rendering)
       setGenerating(true);
       setSteps([]);
 
@@ -395,18 +439,22 @@ export default function Home() {
           },
           {
             onStatus: (msg, step) => setSteps((p) => [...p, { message: msg, step, time: Date.now() }]),
+            onSlidePartial: (slide) => setPreviewSlide(slide),
             onDone: async (data) => {
               if (data.slideId) await loadSlide(data.slideId);
+              setPreviewSlide(null);
               setGenerating(false);
             },
             onError: (msg) => {
               setSteps((p) => [...p, { message: `Error: ${msg}`, time: Date.now() }]);
+              setPreviewSlide(null);
               setGenerating(false);
             },
           },
         );
       } catch (e) {
         setSteps((p) => [...p, { message: e instanceof Error ? e.message : "Error", time: Date.now() }]);
+        setPreviewSlide(null);
         setGenerating(false);
       }
     },
@@ -598,7 +646,19 @@ export default function Home() {
           {/* Viewport */}
           <div className="relative flex-1 bg-neutral-900 md:rounded-xl overflow-hidden">
             <AnimatePresence mode="wait">
-              {generating && !currentNode ? (
+              {generating && previewSlide ? (
+                <SlideRenderer
+                  key="preview"
+                  node={syntheticNode(previewSlide)}
+                  loading={true}
+                  autoPlayAudio={false}
+                  onAutoPlayChange={handleAutoPlayChange}
+                  onNavigate={handleNavigate}
+                  onContinue={handleContinue}
+                  onBranch={handleBranch}
+                  onRefresh={handleRefresh}
+                />
+              ) : generating ? (
                 <motion.div
                   key="progress"
                   initial={{ opacity: 0 }}
@@ -612,7 +672,7 @@ export default function Home() {
                 <SlideRenderer
                   key={currentNode.id}
                   node={currentNode}
-                  loading={generating}
+                  loading={false}
                   autoPlayAudio={autoPlayAudio}
                   onAutoPlayChange={handleAutoPlayChange}
                   onNavigate={handleNavigate}
@@ -668,10 +728,11 @@ export default function Home() {
               {history.map((id) => (
                 <button
                   key={id}
-                  onClick={() => loadSlide(id)}
+                  onClick={() => !generating && loadSlide(id)}
+                  disabled={generating}
                   className={`h-1.5 rounded-full transition-all ${
                     id === currentNode?.id ? "w-6 bg-white/70" : "w-1.5 bg-white/20 hover:bg-white/40"
-                  }`}
+                  } ${generating ? "pointer-events-none opacity-50" : ""}`}
                 />
               ))}
             </div>

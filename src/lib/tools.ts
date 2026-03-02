@@ -3,47 +3,13 @@ import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 export const tools: Tool[] = [
   {
     name: "render_slide",
-    description: `Add ONE slide to the presentation. The user will read it at their own pace, then click an action button to trigger the next slide. Generate one slide per call.
+    description: `Add ONE slide to the presentation. Generate one slide per call.
 
 SLIDE STRUCTURE:
-{
-  "id": "slide-1",
-  "title": "Optional heading displayed at the top of the slide",
-  "subtitle": "Optional subheading",
-  "background": "#ffffff",
-  "dark": false,
-  "blocks": [ ... ],
-  "actions": [
-    { "label": "Show me an example", "prompt": "show a concrete example of this", "variant": "secondary" }
-  ]
-}
+{ "id": "slide-1", "title": "...", "subtitle": "...", "background": "#ffffff", "dark": false, "blocks": [...], "actions": [{ "label": "...", "prompt": "...", "variant": "secondary" }] }
 
-DESIGN RULES:
-- background: Use ONLY simple solid colors. Light slides: "#ffffff", "#f9fafb", "#f0f9ff". Dark slides: "#111827", "#0f172a", "#18181b". NO GRADIENTS.
-- dark: Set true if background is dark, false if light. This controls text color.
-- Keep text SHORT. Use bullet points, not paragraphs. Max ~30 words per text block.
-- Use large, clear typography. Level 1-2 headings for titles.
-- Prefer visual blocks: stats, charts, images, cards, timelines.
-
-CRITICAL — NO SCROLLING:
-The viewport is a fixed 16:9 box. Content that overflows is CLIPPED and invisible. Stay within these limits:
-- Max 2-3 blocks per slide (title/subtitle are separate, not counted)
-- Lists: max 4 items
-- Timeline: max 3 items
-- Table: max 4 rows × 4 columns
-- Stats: max 4 items
-- Chart data: max 6 points
-Split excess content across slides using actions.
-
-ACTIONS:
-- Every slide MUST have 1-3 actions so the user can navigate.
-- Add optional actions like "Show example", "Quiz me", "Try it", "Dive deeper", "Compare", etc.
-- The last slide should have a "Start over" action with variant "outline".
-- action.prompt is what gets sent to you as the next user message.
-
-BLOCK ANIMATIONS (delays relative to slide appearance):
-Every block needs an "animation":
-{ "entrance": "fade-in"|"slide-up"|"scale-up"|"blur-in"|"none", "delay": 0.1, "duration": 0.5 }
+BLOCK ANIMATIONS:
+Every block needs "animation": { "entrance": "fade-in"|"slide-up"|"scale-up"|"blur-in"|"none", "delay": 0.1, "duration": 0.5 }
 Stagger blocks: 0.1, 0.3, 0.5, 0.7s etc.
 
 BLOCK TYPES:
@@ -131,5 +97,6 @@ Every block needs a unique "id".`,
       properties: { query: { type: "string" } },
       required: ["query"],
     },
-  },
+    cache_control: { type: "ephemeral" },
+  } as Tool & { cache_control: { type: string } },
 ];

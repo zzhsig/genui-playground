@@ -5,6 +5,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSlide, createChat, getChatMessages, addChatMessage } from "@/lib/db/queries";
 import { createSSEStream, SSE_HEADERS } from "@/lib/generate-slide";
 
+const CHAT_MODEL = process.env.CHAT_MODEL || "anthropic/claude-haiku-4-5";
+
 const anthropic = new Anthropic({
   baseURL: "https://openrouter.ai/api",
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     send({ type: "status", message: "Thinking..." });
 
     const response = await anthropic.messages.create({
-      model: "anthropic/claude-opus-4-6",
+      model: CHAT_MODEL,
       max_tokens: 1024,
       system: slideContext,
       messages: claudeMessages,

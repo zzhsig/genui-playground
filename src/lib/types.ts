@@ -58,6 +58,7 @@ export interface SlideNode {
 export type SSEEvent =
   | { type: "status"; message: string; step?: string }
   | { type: "slide"; slide: UISlide }
+  | { type: "slide_partial"; slide: UISlide }
   | { type: "thinking"; text: string }
   | { type: "done"; slideId?: string; chatId?: string; conversationHistory?: ConversationMessage[] }
   | { type: "chat_response"; chatId: string; content: string }

@@ -3,6 +3,7 @@ import { tools } from "@/lib/tools";
 import { buildSystemPrompt } from "@/lib/system-prompt";
 import { postProcessSlide } from "@/lib/post-processors";
 import { webSearch } from "@/lib/search";
+import { SLIDE_MODEL } from "@/lib/generate-slide";
 import type { GenerateRequest, SSEEvent, UISlide } from "@/lib/types";
 
 const anthropic = new Anthropic({
@@ -52,11 +53,11 @@ async function runGeneration(request: GenerateRequest, send: SendFn): Promise<An
   const MAX_TURNS = 10;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await anthropic.messages.create({
-      model: "anthropic/claude-opus-4-6",
-      max_tokens: 16384,
-      system: systemPrompt,
+      model: SLIDE_MODEL,
+      max_tokens: 4096,
+      system: [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }],
       messages,
-      tools,
+      tools: tools as any,
     });
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
