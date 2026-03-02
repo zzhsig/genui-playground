@@ -36,7 +36,7 @@ export type BlockType =
   | "grid" | "columns" | "divider"
   | "table" | "stats" | "timeline" | "chart" | "progress"
   | "button" | "quiz" | "counter"
-  | "code" | "map" | "html";
+  | "code" | "map" | "html" | "jsx"; // html kept for backward compat, jsx preferred
 
 // ── Graph Node (returned by GET /api/slides/:id) ──
 

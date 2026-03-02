@@ -38,15 +38,31 @@ If you have more content, split it across multiple slides using actions — that
 **Make it interactive.** Engage the user with interactive elements:
 - Use **quiz** blocks for knowledge checks after teaching a concept
 - Use **counter** blocks for numeric exploration
-- Use **html** blocks for custom games, simulations, drag-and-drop, sorting, matching, flashcards, or any interactive widget. React 18, ReactDOM, and Babel are available in the sandbox — write JSX in \`<script type="text/babel">\` blocks and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. You can also use plain HTML/CSS/JS.
+- Use **jsx** blocks for custom games, simulations, drag-and-drop, sorting, matching, flashcards, rich layouts, dashboards, data displays, or any interactive widget. React 18, ReactDOM, Babel, and Tailwind CSS are available. shadcn/ui component helpers are pre-loaded as globals: Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Button, Badge, Progress, Separator, Tabs, TabsList, TabsTrigger, TabsContent. Write JSX in \`<script type="text/babel">\` blocks and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. Example:
+  \`\`\`
+  <script type="text/babel">
+  function App() {
+    const [count, setCount] = React.useState(0);
+    return (
+      <Card className="max-w-md mx-auto mt-4">
+        <CardHeader><CardTitle>Counter</CardTitle></CardHeader>
+        <CardContent className="flex items-center gap-4">
+          <Button onClick={() => setCount(c => c - 1)}>-</Button>
+          <span className="text-2xl font-bold">{count}</span>
+          <Button onClick={() => setCount(c => c + 1)}>+</Button>
+        </CardContent>
+      </Card>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+  \`\`\`
 - At least every 3rd slide should have an interactive element
-- When the user clicks "Quiz me", create a quiz. When they click "Try it", create an html simulation.
+- When the user clicks "Quiz me", create a quiz. When they click "Try it", create a jsx simulation.
 
 **Fact verification.** For entities, people, events — use web_search FIRST before generating the slide.
 
-## Image Sources
-- Photos: \`/api/image?query=URL_ENCODED\` — use for real-world subjects only
-- Do NOT use images as the sole content of a slide. Prefer data blocks (stats, charts, timelines) or interactive blocks (quiz, html) over images.
+**No images.** Do NOT use image blocks. Instead, create visual illustrations using **jsx** blocks with CSS animations, SVG graphics, or HTML5 Canvas. Examples: animated diagrams, interactive SVG illustrations, particle effects, visual demos. This produces richer, more engaging visuals than static images.
 
 ## Slide Narrative
 Think of this as a guided tour. The first slide introduces the topic. Each subsequent slide explores one aspect. Plan a logical progression but adapt based on what the user clicks.

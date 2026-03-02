@@ -17,12 +17,10 @@ BLOCK TYPES:
 CONTENT:
 - heading: { text, level?: 1-6 }
 - text: { content } — supports **bold**, *italic*. Keep SHORT.
-- image: { src, alt, caption?, size?: "sm"|"md"|"lg"|"full" }
-  src: "/api/image?query=URL_ENCODED" for real-world photos only. Never use images as the sole block on a slide.
 - list: { items: string[], ordered?: boolean, icon?: string } — max 4 items
 - quote: { text, author? }
 - callout: { type: "info"|"warning"|"success"|"tip", title?, content }
-- card: { title, description?, image?, tags?: string[] }
+- card: { title, description?, tags?: string[] }
 
 LAYOUT:
 - grid: { columns?: 2|3|4 } (with children blocks)
@@ -42,7 +40,10 @@ INTERACTIVE (use often to engage the user):
 
 RICH:
 - code: { code, language?, title? }
-- html: { content: "<body content + scripts>", height? } — for games, simulations, flashcards, interactive widgets. Use this for "Try it" actions. The sandbox has React 18, ReactDOM, Babel, and Tailwind CSS available. Write React components using JSX in \`<script type="text/babel">\` blocks and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. A \`<div id="root">\` is provided automatically. You can also use plain HTML/CSS/JS. Do NOT include \`<html>\` or \`<head>\` tags — just provide body content and scripts.
+- jsx: { content: "<React JSX>", height? } — for games, simulations, flashcards, interactive widgets, rich layouts, dashboards, data displays, and visual illustrations. React 18, ReactDOM, Babel, and Tailwind CSS are available. shadcn/ui component helpers are pre-loaded as globals:
+  Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Button, Badge, Progress, Separator, Tabs, TabsList, TabsTrigger, TabsContent.
+  Write JSX in \`<script type="text/babel">\` and render with \`ReactDOM.createRoot(document.getElementById('root')).render(<App />)\`. A \`<div id="root">\` is provided automatically. Do NOT include \`<html>\` or \`<head>\` tags — just provide body content and scripts.
+  For visual illustrations, use CSS animations, SVG, or HTML5 Canvas instead of images. Example: animated diagrams, particle effects, interactive SVG.
 
 Every block needs a unique "id".`,
     input_schema: {

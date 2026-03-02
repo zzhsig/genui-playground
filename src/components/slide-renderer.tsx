@@ -7,6 +7,7 @@ import { AnimatedBlock } from "./animated-block";
 import { HtmlSandbox } from "./html-sandbox";
 import { ChatPanel } from "./chat-panel";
 import { LinkModal } from "./link-modal";
+import { Skeleton } from "./ui/skeleton";
 
 // ── Main Slide Renderer ──
 
@@ -25,9 +26,10 @@ interface SlideRendererProps {
   onContinue: () => void;
   onBranch: (prompt: string) => void;
   onRefresh: () => void;
+  statusMessage?: string;
 }
 
-export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, onNavigate, onContinue, onBranch, onRefresh }: SlideRendererProps) {
+export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, onNavigate, onContinue, onBranch, onRefresh, statusMessage }: SlideRendererProps) {
   const { slide, parentId, mainChildId, links, backlinks } = node;
   const dark = slide.dark ?? false;
   const bg = slide.background || "#ffffff";
@@ -166,39 +168,57 @@ export function SlideRenderer({ node, loading, autoPlayAudio, onAutoPlayChange, 
       {/* Content area */}
       <div
         ref={contentRef}
-        className="flex-1 flex flex-col items-center justify-center px-16 py-8 gap-3 overflow-hidden min-h-0"
+        className={`flex-1 flex flex-col items-center px-16 py-8 gap-3 overflow-hidden min-h-0 ${loading ? "justify-start pt-16" : "justify-center"}`}
         onMouseUp={handleMouseUp}
         onClick={handleContentClick}
       >
-        {slide.title && (
+        {slide.title ? (
           <AnimatedBlock animation={{ entrance: "fade-in", delay: 0, duration: 0.5 }} currentTime={999} playing={false}>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-center leading-tight max-w-3xl">
               {slide.title}
             </h1>
           </AnimatedBlock>
-        )}
-        {slide.subtitle && (
+        ) : loading ? (
+          <Skeleton className="h-10 w-80 rounded-lg" />
+        ) : null}
+        {slide.subtitle ? (
           <AnimatedBlock animation={{ entrance: "fade-in", delay: 0.15, duration: 0.4 }} currentTime={999} playing={false}>
             <p className="text-base text-center max-w-2xl leading-relaxed" style={{ color: mutedColor }}>
               {slide.subtitle}
             </p>
           </AnimatedBlock>
-        )}
+        ) : loading && !slide.title ? (
+          <Skeleton className="h-5 w-64 rounded-md" />
+        ) : null}
 
         <div className="flex flex-col items-center w-full max-w-4xl gap-4 mt-4 overflow-hidden min-h-0">
-          {slide.blocks.map((block) => (
+          {slide.blocks.map((block, i) => (
             <AnimatedBlock
               key={block.id}
               animation={block.animation}
               currentTime={999}
               playing={false}
-              className="w-full"
+              className={`w-full ${loading && i === slide.blocks.length - 1 ? "animate-pulse" : ""}`}
             >
               <div data-block-id={block.id}>
-                <BlockRenderer block={block} dark={dark} mutedColor={mutedColor} />
+                <BlockRenderer block={block} dark={dark} mutedColor={mutedColor} loading={loading} />
               </div>
             </AnimatedBlock>
           ))}
+          {loading && slide.blocks.length === 0 && (
+            <div className="flex flex-col items-center w-full gap-4">
+              {statusMessage && (
+                <p className="text-sm animate-pulse" style={{ color: mutedColor }}>
+                  {statusMessage}
+                </p>
+              )}
+              <Skeleton className="h-24 w-full max-w-2xl rounded-xl" />
+              <Skeleton className="h-16 w-full max-w-xl rounded-xl" />
+            </div>
+          )}
+          {loading && slide.blocks.length > 0 && (
+            <Skeleton className="h-16 w-full max-w-xl rounded-xl" />
+          )}
         </div>
 
         {/* Links/backlinks are shown in the LinkModal via the link button below */}
@@ -382,8 +402,8 @@ function ActionButton({ action, onClick, disabled }: { action: SlideAction; onCl
 
 // ── Block Renderer ──
 
-export function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dark: boolean; mutedColor: string }) {
-  const p = block.props as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+export function BlockRenderer({ block, dark, mutedColor, loading }: { block: UIBlock; dark: boolean; mutedColor: string; loading?: boolean }) {
+  const p = (block.props || {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const children = block.children;
   const cardBg = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)";
   const cardBorder = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
@@ -495,7 +515,7 @@ export function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dar
     case "grid":
       return (
         <div className="grid gap-4 w-full" style={{ gridTemplateColumns: `repeat(${Math.min(p.columns || 3, 4)}, minmax(0, 1fr))` }}>
-          {children?.map((child) => <BlockRenderer key={child.id} block={child} dark={dark} mutedColor={mutedColor} />)}
+          {children?.map((child, i) => <BlockRenderer key={child.id || i} block={child} dark={dark} mutedColor={mutedColor} loading={loading} />)}
         </div>
       );
 
@@ -506,7 +526,7 @@ export function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dar
         .join(" ");
       return (
         <div className="grid gap-6 w-full" style={{ gridTemplateColumns: template }}>
-          {children?.map((child) => <BlockRenderer key={child.id} block={child} dark={dark} mutedColor={mutedColor} />)}
+          {children?.map((child, i) => <BlockRenderer key={child.id || i} block={child} dark={dark} mutedColor={mutedColor} loading={loading} />)}
         </div>
       );
     }
@@ -665,7 +685,9 @@ export function BlockRenderer({ block, dark, mutedColor }: { block: UIBlock; dar
       );
 
     case "html":
-      return <HtmlSandbox content={p.content as string} height={(p.height as string) || "280px"} />;
+    case "jsx":
+      if (!p.content) return loading ? <Skeleton className="h-40 w-full rounded-xl" /> : null;
+      return <HtmlSandbox content={p.content as string} height={(p.height as string) || "280px"} dark={dark} />;
 
     default:
       return (
@@ -990,6 +1012,7 @@ function AudioControls({ slide, autoPlay, onAutoPlayChange }: { slide: UISlide; 
 // ── Helpers ──
 
 function mdLite(text: string): string {
+  if (!text) return "";
   return text
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")

@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { tools } from "./tools";
 import { buildSystemPrompt } from "./system-prompt";
-import { postProcessSlide } from "./post-processors";
+import { postProcessSlide, postProcessPartial } from "./post-processors";
 import { webSearch } from "./search";
 import type { UISlide, SSEEvent, ConversationMessage } from "./types";
 
@@ -167,14 +167,16 @@ export async function generateSlide(
             : undefined,
         };
 
+        const processed = postProcessPartial(partial);
+
         // Throttle: max 1 partial per PARTIAL_THROTTLE_MS
         const now = Date.now();
         if (now - lastPartialTime >= PARTIAL_THROTTLE_MS) {
           lastPartialTime = now;
-          send({ type: "slide_partial", slide: partial });
+          send({ type: "slide_partial", slide: processed });
         } else {
           // Coalesce: store pending and send on timer
-          pendingPartial = partial;
+          pendingPartial = processed;
           if (!partialTimer) {
             partialTimer = setTimeout(() => {
               if (pendingPartial) {

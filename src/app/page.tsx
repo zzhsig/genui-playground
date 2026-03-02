@@ -646,10 +646,10 @@ export default function Home() {
           {/* Viewport */}
           <div className="relative flex-1 bg-neutral-900 md:rounded-xl overflow-hidden">
             <AnimatePresence mode="wait">
-              {generating && previewSlide ? (
+              {generating ? (
                 <SlideRenderer
                   key="preview"
-                  node={syntheticNode(previewSlide)}
+                  node={syntheticNode(previewSlide || { id: "loading", blocks: [], actions: [] })}
                   loading={true}
                   autoPlayAudio={false}
                   onAutoPlayChange={handleAutoPlayChange}
@@ -657,17 +657,8 @@ export default function Home() {
                   onContinue={handleContinue}
                   onBranch={handleBranch}
                   onRefresh={handleRefresh}
+                  statusMessage={!previewSlide && steps.length > 0 ? steps[steps.length - 1].message : undefined}
                 />
-              ) : generating ? (
-                <motion.div
-                  key="progress"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 flex items-center justify-center bg-neutral-900"
-                >
-                  <GenerationProgress steps={steps} active={true} />
-                </motion.div>
               ) : currentNode ? (
                 <SlideRenderer
                   key={currentNode.id}
@@ -725,9 +716,9 @@ export default function Home() {
           {/* Breadcrumb path */}
           {history.length > 1 && (
             <div className="flex items-center justify-center gap-1 py-2 overflow-x-auto">
-              {history.map((id) => (
+              {history.map((id, i) => (
                 <button
-                  key={id}
+                  key={`${id}-${i}`}
                   onClick={() => !generating && loadSlide(id)}
                   disabled={generating}
                   className={`h-1.5 rounded-full transition-all ${
